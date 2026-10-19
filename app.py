@@ -4,6 +4,18 @@ import numpy as np
 import pandas as pd
 from nba_api.live.nba.endpoints import scoreboard
 from nba_api.stats.endpoints import leaguedashteamstats
+from nba_api.stats.library.http import NBAStatsHTTP
+
+# Make the API act more like a real browser
+NBAStatsHTTP.headers = {
+    'Host': 'stats.nba.com',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.nba.com/',
+    'Origin': 'https://www.nba.com',
+    'Connection': 'keep-alive',
+}
 
 st.set_page_config(page_title="NBA Projection Engine", page_icon="🏀", layout="wide")
 
@@ -22,21 +34,20 @@ def get_todays_games():
             })
         return result
     except Exception as e:
-        st.warning(f"Could not load games: {e}")
         return []
 
 def get_team_stats(season="2025-26"):
     try:
-        time.sleep(1.0)
+        time.sleep(1.5)
         stats = leaguedashteamstats.LeagueDashTeamStats(
             season=season,
             measure_type_detailed_defense="Advanced",
-            per_mode_detailed="PerGame"
+            per_mode_detailed="PerGame",
+            timeout=60
         )
         df = stats.get_data_frames()[0]
         return df[["TEAM_ABBREVIATION", "PACE", "OFF_RATING", "DEF_RATING"]].set_index("TEAM_ABBREVIATION")
     except Exception as e:
-        st.warning(f"Could not load team stats: {e}")
         return pd.DataFrame()
 
 def simulate_possession(ortg):
@@ -58,7 +69,7 @@ def simulate_possession(ortg):
             return simulate_possession(ortg * 0.93)
         return 0
 
-def run_simulation(home_ortg, away_ortg, pace, n_sims=3000):
+def run_simulation(home_ortg, away_ortg, pace, n_sims=2500):
     home_scores = np.zeros(n_sims)
     away_scores = np.zeros(n_sims)
     for i in range(n_sims):
@@ -78,12 +89,16 @@ def run_simulation(home_ortg, away_ortg, pace, n_sims=3000):
 st.markdown("### Click the button below to run live projections")
 
 if st.button("🔄 Run Live Projections", use_container_width=True, type="primary"):
-    with st.spinner("Pulling live NBA data + running simulations... (20-40 seconds)"):
+    with st.spinner("Trying to pull live NBA data... (this can take up to 60 seconds)"):
         games = get_todays_games()
         team_stats = get_team_stats()
         
-        if team_stats.empty or not games:
-            st.error("Could not load data from NBA API right now. Please wait 1 minute and try again.")
+        if team_stats.empty or len(games) == 0:
+            st.error("NBA API is currently blocking or timing out from this server.")
+            st.info("This is a known issue with free cloud hosts. The API works better from a normal home connection.")
+            st.write("Possible solutions:")
+            st.write("1. Try again in a few minutes")
+            st.write("2. Use a different host later (Railway, a VPS, etc.)")
         else:
             for g in games:
                 home = g["home"]
@@ -109,4 +124,4 @@ if st.button("🔄 Run Live Projections", use_container_width=True, type="primar
                 st.divider()
 
 st.markdown("---")
-st.caption("Data via NBA.com • Monte Carlo simulation • Made for mobile")
+st.caption("Data via NBA.com • Monte Carlo simulation")
